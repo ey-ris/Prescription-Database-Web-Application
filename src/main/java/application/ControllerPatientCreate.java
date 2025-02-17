@@ -15,8 +15,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 
 import view.*;
 
-import static java.sql.DriverManager.getConnection;
-
 /*
  * Controller class for patient interactions.
  *   register as a new patient.
@@ -51,17 +49,9 @@ public class ControllerPatientCreate {
 			getDoctor.setString(1, patient.getPrimaryName()); // Assuming primaryName is storing doctor's last name
 			ResultSet rs = getDoctor.executeQuery();
 
-			int doctorId = -1;
+			int doctorId;
 			if (rs.next()) {
 				doctorId = rs.getInt("id");
-
-				// Check if multiple doctors exist with the same last name
-				if (rs.next()) { // If there's another result, multiple doctors exist
-					model.addAttribute("message", "Error: Multiple doctors found with last name '" + patient.getPrimaryName() +
-							"'. Please provide more details.");
-					model.addAttribute("patient", patient);
-					return "patient_register";
-				}
 			} else {
 				model.addAttribute("message", "Error: No doctor found with last name '" + patient.getPrimaryName() + "'.");
 				model.addAttribute("patient", patient);
@@ -70,7 +60,7 @@ public class ControllerPatientCreate {
 
 			// Insert new patient
 			PreparedStatement ps = con.prepareStatement(
-					"INSERT INTO patient(last_name, first_name, date_of_birth, street, city, state, zipcode, primary_doctor_id, ssn) " +
+					"INSERT INTO patient(last_name, first_name, birth_date, street, city, state, zipcode, doctor_id, ssn) " +
 							"VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS);
 			ps.setString(1, patient.getLast_name());
 			ps.setString(2, patient.getFirst_name());
@@ -112,13 +102,11 @@ public class ControllerPatientCreate {
 	@PostMapping("/patient/show")
 	public String showPatient(PatientView patient, Model model) {
 
-		// TODO   search for patient by id and name
 		System.out.println("showPatient "+ patient);  // debugging in console
-		
-		// if found, return "patient_show", else return error message and "patient_get"
-		try (Connection con = getConnection();) {
 
-			PreparedStatement ps = con.prepareStatement("select last_name, first_name, date_of_birth, street, city, state, zipcode, primary_doctor_name from patient where id=? and last_name=?");
+		try (Connection con = getConnection()) {
+
+			PreparedStatement ps = con.prepareStatement("select last_name, first_name, birth_date, street, city, state, zipcode, doctor_id from patient where id=? and last_name=?");
 			ps.setInt(1, patient.getId());
 			ps.setString(2, patient.getLast_name());
 
@@ -132,7 +120,6 @@ public class ControllerPatientCreate {
 				patient.setState(rs.getString(6));
 				patient.setZipcode(rs.getString(7));
 				patient.setPrimaryName(rs.getString(8));
-				//patient.setSsn(rs.getString(9));
 
 				model.addAttribute("patient", patient);
 				System.out.println("end getPatient "+patient);  // debug
