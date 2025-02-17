@@ -1,6 +1,5 @@
 package application;
 
-
 import java.sql.*;
 import java.time.LocalDate;
 
@@ -34,10 +33,10 @@ public class ControllerPrescriptionFill {
 
 			// 1. Validate Pharmacy
 			PreparedStatement pharmacyPS = con.prepareStatement(
-					"SELECT ID, phone FROM pharmacy WHERE name = ? AND address = ?"
+					"SELECT ID, phone FROM pharmacy WHERE TRIM(LOWER(name)) = TRIM(LOWER(?)) AND TRIM(LOWER(address)) = TRIM(LOWER(?))"
 			);
-			pharmacyPS.setString(1, p.getPharmacyName());
-			pharmacyPS.setString(2, p.getPharmacyAddress());
+			pharmacyPS.setString(1, p.getPharmacyName().trim().toLowerCase());
+			pharmacyPS.setString(2, p.getPharmacyAddress().trim().toLowerCase());
 			ResultSet pharmacyRS = pharmacyPS.executeQuery();
 			if (pharmacyRS.next()) {
 				p.setPharmacyID(pharmacyRS.getInt("ID"));
@@ -47,9 +46,9 @@ public class ControllerPrescriptionFill {
 				return "prescription_fill";
 			}
 
-			// 2. Validate Prescription
+			// 2. Validate Prescription and Get Details
 			PreparedStatement prescriptionPS = con.prepareStatement(
-					"SELECT drug_ID, drug_quantity, max_number_refill FROM prescription WHERE RXID = ?"
+					"SELECT drug_ID, drug_quantity, max_number_refill, doctor_ID, patient_ID FROM prescription WHERE RXID = ?"
 			);
 			prescriptionPS.setInt(1, p.getRxid());
 			ResultSet prescriptionRS = prescriptionPS.executeQuery();
@@ -57,6 +56,42 @@ public class ControllerPrescriptionFill {
 				p.setDrugName(String.valueOf(prescriptionRS.getInt("drug_ID")));
 				p.setQuantity(prescriptionRS.getInt("drug_quantity"));
 				p.setRefills(prescriptionRS.getInt("max_number_refill"));
+
+				int doctorID = prescriptionRS.getInt("doctor_ID");
+				int patientID = prescriptionRS.getInt("patient_ID");
+
+				// Fetch Patient Name
+				PreparedStatement patientPS = con.prepareStatement(
+						"SELECT first_name, last_name, ID FROM patient WHERE ID = ?"
+				);
+				patientPS.setInt(1, patientID);
+				ResultSet patientRS = patientPS.executeQuery();
+				if (patientRS.next()) {
+					// Display Patient Info
+					p.setPatient_id(patientRS.getInt("ID"));
+					p.setPatientFirstName(patientRS.getString("first_name"));
+					p.setPatientLastName(patientRS.getString("last_name"));
+				} else {
+					model.addAttribute("message", "Error: Patient not found.");
+					return "prescription_fill";
+				}
+
+				// Fetch Doctor Name
+				PreparedStatement doctorPS = con.prepareStatement(
+						"SELECT first_name, last_name, ID FROM doctor WHERE ID = ?"
+				);
+				doctorPS.setInt(1, doctorID);
+				ResultSet doctorRS = doctorPS.executeQuery();
+				if (doctorRS.next()) {
+					// Display Doctor Info
+					p.setDoctor_id(doctorRS.getInt("ID"));
+					p.setDoctorFirstName(doctorRS.getString("first_name"));
+					p.setDoctorLastName(doctorRS.getString("last_name"));
+				} else {
+					model.addAttribute("message", "Error: Doctor not found.");
+					return "prescription_fill";
+				}
+
 			} else {
 				model.addAttribute("message", "Error: Prescription not found.");
 				return "prescription_fill";
@@ -93,13 +128,16 @@ public class ControllerPrescriptionFill {
 				return "prescription_fill";
 			}
 
-			// 6. Insert New Fill Record
+			// 6. Insert New Fill Record (Trigger will handle validation)
+			LocalDate currentDate = LocalDate.now();
+			p.setDateFilled(currentDate.toString()); // Set the current date
+
 			PreparedStatement insertFillPS = con.prepareStatement(
 					"INSERT INTO prescription_filled (prescription_RXID, pharmacy_ID, date_filled, cost) VALUES (?, ?, ?, ?)"
 			);
 			insertFillPS.setInt(1, p.getRxid());
 			insertFillPS.setInt(2, p.getPharmacyID());
-			insertFillPS.setDate(3, Date.valueOf(LocalDate.now()));
+			insertFillPS.setDate(3, Date.valueOf(currentDate));
 			insertFillPS.setDouble(4, Double.parseDouble(p.getCost()));
 			insertFillPS.executeUpdate();
 
